@@ -1,0 +1,486 @@
+import React, { useState, useCallback, useMemo, useRef } from 'react';
+import { useStore } from '../store/store'; 
+import { Character, OutlinePoint, Message } from '../types'; 
+import {
+    generateStoryConcept,
+    continueStory,
+    extractStoryElements,
+    assistantChat
+} from '../services/aiService'; 
+
+import {
+    BookOpen,
+    Feather,
+    Sparkles,
+    MessageSquare,
+    Send,
+    Loader2,
+    CheckCircle,
+    Copy,
+    ClipboardCopy
+} from 'lucide-react';
+
+const CopyButton: React.FC<{ textToCopy: string }> = ({ textToCopy }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        const el = document.createElement('textarea');
+        el.value = textToCopy;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <button
+            onClick={handleCopy}
+            className={`p-2 rounded-full transition-colors ${
+                copied ? 'bg-green-500 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+            }`}
+            title={copied ? "已复制" : "复制文本"}
+            disabled={!textToCopy}
+        >
+            {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
+        </button>
+    );
+};
+const ChatBubble: React.FC<{ message: Message; storyContext: string }> = ({ message, storyContext }) => {
+    const isUser = message.role === 'user';
+    const hasSources = message.sources && message.sources.length > 0;
+
+    const formattedText = useMemo(() => {
+        let text = message.text || '';
+        if (hasSources) {
+            text = text.replace(/\[(\d+)\]/g, (match, index) => {
+                const sourceIndex = parseInt(index, 10) - 1;
+                const source = message.sources![sourceIndex];
+                if (source) {
+                    return `<a 
+                                href="${source.uri}" 
+                                target="_blank" 
+                                class="text-blue-500 hover:text-blue-700 underline text-xs ml-1" 
+                                title="${source.title || '引用来源'}">
+                                [${index}]
+                            </a>`;
+                }
+                return match;
+            });
+        }
+        return text;
+    }, [message.text, hasSources]);
+
+    const contextLines = storyContext.split('\n').filter(line => line.trim() !== '');
+    const maxContextLength = 150;
+    const briefContext = contextLines.slice(0, 3).join(' ').substring(0, maxContextLength) + (storyContext.length > maxContextLength ? '...' : '');
+
+    return (
+        <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[90%] p-3 rounded-xl shadow-md flex flex-col space-y-2 transition-transform duration-300 ${
+                isUser 
+                    ? 'bg-blue-500 text-white rounded-tr-none' 
+                    : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'
+            }`}>
+                {!isUser && (
+                    <div className="text-xs text-gray-400 mb-1 italic" title="AI 写作助手">
+                        基于上下文："{briefContext}"
+                    </div>
+                )}
+                <div 
+                    className="whitespace-pre-wrap leading-relaxed" 
+                    dangerouslySetInnerHTML={{ __html: formattedText }} 
+                />
+                
+                {!isUser && hasSources && (
+                    <div className="border-t border-gray-200 pt-2 mt-2">
+                        <p className="text-xs font-semibold text-gray-500 mb-1">引文来源:</p>
+                        <ul className="text-xs space-y-1">
+                            {message.sources!.map((source, index) => (
+                                <li key={index} className="flex items-start">
+                                    <span className="text-blue-500 mr-1">[{index + 1}]</span>
+                                    <a href={source.uri} target="_blank" className="text-gray-500 hover:text-blue-500 underline truncate block max-w-full" title={source.title || source.uri}>
+                                        {source.title || source.uri}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
+// --- Main AiTools Component ---
+
+interface AiToolsProps {
+    onStoryContinued: (newText: string) => void;
+    onConceptGenerated: (concept: Character) => void;
+}
+
+const AiTools: React.FC<AiToolsProps> = ({ onStoryContinued, onConceptGenerated }) => {
+    const { currentStory, inputs, chatHistory, dispatch } = useStore();
+    const [isLoading, setIsLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<'concept' | 'continue' | 'outline' | 'chat'>('continue');
+    const [chatInput, setChatInput] = useState('');
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    };
+
+    const storyContext = currentStory?.text || '';
+    const storyTitle = currentStory?.title || '未命名故事';
+
+    const handleGenerateConcept = useCallback(async () => {
+        if (isLoading || !inputs) return;
+
+        setIsLoading(true);
+        try {
+            const conceptData = await generateStoryConcept(inputs);
+            if (conceptData) {
+                const newCharacter: Character = {
+                    id: crypto.randomUUID(),
+                    name: conceptData.characterName,
+                    role: conceptData.characterRole,
+                    description: conceptData.characterDesc,
+                    conflict: conceptData.characterConflict,
+                    // 初始概念不包含 image
+                    image: `https://placehold.co/100x100/A0B2C3/ffffff?text=${conceptData.characterName.split('')[0]}`
+                };
+
+                dispatch({ type: 'UPDATE_STORY_TITLE', payload: conceptData.title });
+                dispatch({ type: 'SET_STORY_TEXT', payload: conceptData.synopsis });
+                dispatch({ type: 'ADD_CHARACTER', payload: newCharacter });
+                
+                onConceptGenerated(newCharacter);
+            }
+        } catch (error) {
+            console.error('概念生成失败:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [isLoading, inputs, dispatch, onConceptGenerated]);
+
+
+    const handleContinueStory = useCallback(async () => {
+        if (isLoading || !storyContext || storyContext.trim().length < 50) return;
+
+        setIsLoading(true);
+        try {
+            const continuation = await continueStory(storyContext);
+            if (continuation) {
+                onStoryContinued(continuation);
+            }
+        } catch (error) {
+            console.error('续写失败:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [isLoading, storyContext, onStoryContinued]);
+
+
+    const handleExtractElements = useCallback(async () => {
+        if (isLoading || !storyContext || storyContext.trim().length < 100) return;
+
+        setIsLoading(true);
+        try {
+            const extraction = await extractStoryElements(storyContext);
+            if (extraction) {
+                dispatch({ type: 'SET_OUTLINE', payload: extraction.outlinePoints });
+
+                extraction.characters.forEach(partialChar => {
+                    if (partialChar.name) {
+                        const existingChar = currentStory?.characters.find(c => c.name === partialChar.name);
+                        if (!existingChar) {
+                            const newCharacter: Character = {
+                                id: crypto.randomUUID(),
+                                name: partialChar.name,
+                                role: partialChar.role || '新角色',
+                                description: partialChar.description || '',
+                                conflict: partialChar.conflict || '',
+                                image: `https://placehold.co/100x100/D4B78D/ffffff?text=${partialChar.name.split('')[0]}`
+                            };
+                            dispatch({ type: 'ADD_CHARACTER', payload: newCharacter });
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('元素提取失败:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [isLoading, storyContext, dispatch, currentStory?.characters]);
+
+    const handleSendChat = useCallback(async (e: React.FormEvent) => {
+        e.preventDefault();
+        const trimmedInput = chatInput.trim();
+        if (isLoading || !trimmedInput) return;
+
+        setIsLoading(true);
+        setChatInput('');
+        
+        const userMessage: Message = { role: 'user', text: trimmedInput, sources: [] };
+        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
+        
+        setTimeout(scrollToBottom, 0);
+
+        try {
+            const thinkingMessage: Message = { role: 'assistant', text: '...', sources: [] };
+            dispatch({ type: 'ADD_CHAT_MESSAGE', payload: thinkingMessage });
+            setTimeout(scrollToBottom, 0);
+
+            const result = await assistantChat(
+                storyContext,
+                chatHistory.concat(userMessage), // 将用户消息加入历史记录进行传递
+                trimmedInput
+            );
+
+            const aiMessage: Message = { role: 'assistant', text: result.text, sources: result.sources };
+            dispatch({ type: 'REPLACE_LAST_CHAT_MESSAGE', payload: aiMessage });
+
+        } catch (error) {
+            console.error('聊天助手失败:', error);
+            const errorMessage: Message = { role: 'assistant', text: 'AI 助手连接失败，请重试。', sources: [] };
+            dispatch({ type: 'REPLACE_LAST_CHAT_MESSAGE', payload: errorMessage });
+        } finally {
+            setIsLoading(false);
+            setTimeout(scrollToBottom, 100);
+        }
+    }, [isLoading, chatInput, dispatch, storyContext, chatHistory]);
+
+
+    const TabButton: React.FC<{ tab: 'concept' | 'continue' | 'outline' | 'chat'; icon: React.ReactNode; label: string }> = ({ tab, icon, label }) => (
+        <button
+            onClick={() => setActiveTab(tab)}
+            className={`flex flex-col items-center p-3 rounded-xl transition-all w-1/4 ${
+                activeTab === tab
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+        >
+            {icon}
+            <span className="text-xs mt-1 font-medium hidden sm:block">{label}</span>
+        </button>
+    );
+
+    const renderPanelContent = useMemo(() => {
+        const charCount = storyContext.length;
+        const canContinue = charCount >= 50;
+        const canExtract = charCount >= 100;
+
+        switch (activeTab) {
+            case 'concept':
+                return (
+                    <div className="p-4 space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                            <Sparkles size={20} className="mr-2 text-yellow-500" />
+                            故事概念生成
+                        </h3>
+                        <p className="text-sm text-gray-600 border-l-4 border-yellow-400 pl-3 py-1 bg-yellow-50 rounded">
+                            根据左侧的 **故事输入** 快速生成一篇梗概、标题和主要角色。
+                        </p>
+                        <div className="bg-white p-3 border rounded-lg text-sm text-gray-700 space-y-1">
+                            <p><span className="font-medium">类型 (Genre):</span> {inputs?.genre || '待输入'}</p>
+                            <p><span className="font-medium">主题 (Theme):</span> {inputs?.theme || '待输入'}</p>
+                            <p><span className="font-medium">主角 (Hero):</span> {inputs?.hero || '待输入'}</p>
+                            <p><span className="font-medium">背景 (Setting):</span> {inputs?.setting || '待输入'}</p>
+                        </div>
+                        <button
+                            onClick={handleGenerateConcept}
+                            disabled={isLoading || !inputs?.genre}
+                            className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center ${
+                                isLoading || !inputs?.genre
+                                    ? 'bg-gray-400 cursor-not-allowed'
+                                    : 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg'
+                            }`}
+                        >
+                            {isLoading ? <Loader2 size={20} className="animate-spin mr-2" /> : <Feather size={20} className="mr-2" />}
+                            {isLoading ? '正在生成...' : '立即生成故事概念'}
+                        </button>
+                    </div>
+                );
+            case 'continue':
+                return (
+                    <div className="p-4 space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                            <Feather size={20} className="mr-2 text-blue-500" />
+                            故事续写
+                        </h3>
+                        <p className="text-sm text-gray-600 border-l-4 border-blue-400 pl-3 py-1 bg-blue-50 rounded">
+                            AI 将根据您当前已写的内容，自动续写下一段情节（约 150-200 字）。
+                        </p>
+                        <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700">
+                            当前字数: <span className="font-bold text-lg">{charCount}</span> 字
+                        </div>
+                        <button
+                            onClick={handleContinueStory}
+                            disabled={isLoading || !canContinue}
+                            className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center ${
+                                isLoading || !canContinue
+                                    ? 'bg-gray-400 cursor-not-allowed'
+                                    : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg'
+                            }`}
+                        >
+                            {isLoading ? <Loader2 size={20} className="animate-spin mr-2" /> : <BookOpen size={20} className="mr-2" />}
+                            {isLoading ? '正在续写中...' : canContinue ? '续写下一段' : '需至少 50 字才能续写'}
+                        </button>
+                    </div>
+                );
+            case 'outline':
+                return (
+                    <div className="p-4 space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                            <BookOpen size={20} className="mr-2 text-green-500" />
+                            大纲与元素提取
+                        </h3>
+                        <p className="text-sm text-gray-600 border-l-4 border-green-400 pl-3 py-1 bg-green-50 rounded">
+                            分析当前故事文本，自动识别关键剧情点和大纲，并从文本中提取潜在角色。
+                        </p>
+                        <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700">
+                            当前字数: <span className="font-bold text-lg">{charCount}</span> 字
+                        </div>
+                        <button
+                            onClick={handleExtractElements}
+                            disabled={isLoading || !canExtract}
+                            className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center ${
+                                isLoading || !canExtract
+                                    ? 'bg-gray-400 cursor-not-allowed'
+                                    : 'bg-green-500 hover:bg-green-600 text-white shadow-lg'
+                            }`}
+                        >
+                            {isLoading ? <Loader2 size={20} className="animate-spin mr-2" /> : <ClipboardCopy size={20} className="mr-2" />}
+                            {isLoading ? '正在分析提取...' : canExtract ? '提取大纲与角色' : '需至少 100 字才能分析'}
+                        </button>
+
+                        <div className="mt-4 space-y-3">
+                            <h4 className="font-semibold text-gray-700">已提取大纲点 ({currentStory?.outline.length || 0}):</h4>
+                            {currentStory?.outline.length === 0 ? (
+                                <p className="text-sm text-gray-500 italic">暂无大纲点，请先提取。</p>
+                            ) : (
+                                <ul className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                                    {currentStory?.outline.map((point, index) => (
+                                        <li key={index} className="bg-white p-2 border border-gray-100 rounded-lg text-xs">
+                                            <p className="font-bold text-gray-800">{point.stage} (紧张度: {point.tension})</p>
+                                            <p className="text-gray-600 mt-1">{point.description}</p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
+                );
+            case 'chat':
+                return (
+                    <div className="p-4 flex flex-col h-full space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                            <MessageSquare size={20} className="mr-2 text-purple-500" />
+                            写作助手 (聊天)
+                        </h3>
+                        <p className="text-sm text-gray-600 border-l-4 border-purple-400 pl-3 py-1 bg-purple-50 rounded">
+                            询问关于故事背景、角色发展或写作技巧的问题。
+                        </p>
+
+                        {/* 聊天历史区 */}
+                        <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-2 border-t pt-4">
+                            {chatHistory.length === 0 ? (
+                                <div className="text-center text-gray-500 py-4 italic text-sm">
+                                    开始提问吧！例如：“我应该如何让主角离开房间？”
+                                </div>
+                            ) : (
+                                chatHistory.map((msg, index) => (
+                                    <ChatBubble key={index} message={msg} storyContext={storyContext} />
+                                ))
+                            )}
+                            {isLoading && (
+                                <div className="flex justify-start">
+                                    <div className="p-3 rounded-xl bg-white border border-gray-100 shadow-md">
+                                        <Loader2 size={16} className="animate-spin text-purple-500" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 输入框 */}
+                        <form onSubmit={handleSendChat} className="flex space-x-2 pt-2 border-t">
+                            <input
+                                type="text"
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                placeholder="向 AI 助手提问..."
+                                className="flex-1 p-3 border border-gray-300 rounded-xl focus:ring-purple-500 focus:border-purple-500 outline-none transition-all"
+                                disabled={isLoading}
+                            />
+                            <button
+                                type="submit"
+                                disabled={isLoading || chatInput.trim().length === 0}
+                                className={`p-3 rounded-xl transition-all ${
+                                    isLoading || chatInput.trim().length === 0
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : 'bg-purple-500 hover:bg-purple-600 text-white'
+                                }`}
+                            >
+                                <Send size={20} />
+                            </button>
+                        </form>
+                    </div>
+                );
+            default:
+                return null;
+        }
+    }, [
+        activeTab, 
+        isLoading, 
+        inputs, 
+        storyContext, 
+        currentStory?.outline, 
+        chatHistory, 
+        chatInput, 
+        handleGenerateConcept, 
+        handleContinueStory, 
+        handleExtractElements, 
+        handleSendChat
+    ]);
+
+    return (
+        <div className="flex flex-col h-full bg-gray-50 border-t border-gray-200 shadow-inner">
+            {/* Tab 导航 */}
+            <div className="flex justify-around p-2 bg-white border-b border-gray-200 space-x-2">
+                <TabButton 
+                    tab="concept" 
+                    icon={<Sparkles size={20} />} 
+                    label="概念"
+                />
+                <TabButton 
+                    tab="continue" 
+                    icon={<Feather size={20} />} 
+                    label="续写" 
+                />
+                <TabButton 
+                    tab="outline" 
+                    icon={<BookOpen size={20} />} 
+                    label="大纲"
+                />
+                <TabButton 
+                    tab="chat" 
+                    icon={<MessageSquare size={20} />} 
+                    label="助手"
+                />
+            </div>
+
+            {/* 内容面板 */}
+            <div className="flex-1 overflow-y-auto pb-4">
+                {renderPanelContent}
+            </div>
+        </div>
+    );
+};
+
+export default AiTools;
