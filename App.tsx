@@ -1,15 +1,18 @@
-
 import React, { useState, useEffect } from 'react';
-import { ViewState, Story, Chapter, Character, Outline, TrashItem, OutlinePoint, StoryConcept, CharacterRole } from './types';
-import { BookOpen, PenTool, Map, Database, Trash2, Plus, Search, FileText, User, Lightbulb, Filter, Settings } from 'lucide-react';
+import { ViewState, Story, Chapter, Character, Outline, TrashItem, OutlinePoint, StoryConcept, CharacterRole, Relationship, UserSettings, DailyRecord } from './types';
+import { BookOpen, PenTool, Map, Database, Trash2, Plus, Search, FileText, User, Lightbulb, Filter, Settings, Share2, Grid, Calendar, Award, CheckCircle } from 'lucide-react';
 import WritingEditor from './components/WritingEditor';
 import OutlineWorld from './components/OutlineWorld';
 import AiAssistant from './components/AiAssistant';
 import IdeaGenie from './components/IdeaGenie';
 import CharacterDetailModal from './components/CharacterDetailModal';
+import RelationshipMap from './components/RelationshipMap';
 
 // --- Mock Data Generators ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+// Helper to get date string YYYY-MM-DD
+const getTodayString = () => new Date().toISOString().split('T')[0];
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -17,9 +20,14 @@ const App: React.FC = () => {
   const [stories, setStories] = useState<Story[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]); 
   const [outlines, setOutlines] = useState<Outline[]>([]);
   const [trash, setTrash] = useState<TrashItem[]>([]);
   
+  // Stats & Goals
+  const [userSettings, setUserSettings] = useState<UserSettings>({ dailyGoal: 1000 });
+  const [writingHistory, setWritingHistory] = useState<DailyRecord[]>([]);
+
   // Selection State
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
@@ -29,6 +37,7 @@ const App: React.FC = () => {
   const [isCharModalOpen, setIsCharModalOpen] = useState(false);
   const [charSearch, setCharSearch] = useState('');
   const [charRoleFilter, setCharRoleFilter] = useState<string>('ALL');
+  const [dataViewMode, setDataViewMode] = useState<'list' | 'map'>('list'); 
 
   // --- Initial Load (Mock) ---
   useEffect(() => {
@@ -51,19 +60,46 @@ const App: React.FC = () => {
             content: "冷冻舱的玻璃上结满了霜。艾伦睁开眼睛，呼吸着稀薄的空气。警报声在空旷的舱室里回荡...",
             order: 1
         }]);
-        setCharacters([{
-            id: generateId(),
-            storyId: demoStoryId,
-            name: "艾伦",
-            role: "主角",
-            conflict: "生存与寻找真相",
-            obstacle: "系统故障与异形生物",
-            action: "逃离冷冻舱",
-            ending: "未知",
-            description: "飞船上的生物工程师，性格沉稳。",
-            appearance: "黑色短发，穿着破损的蓝色制服，左臂有机械义肢。",
-            growthArc: "从迷茫的幸存者成长为坚定的领袖。"
-        }]);
+        const char1Id = generateId();
+        const char2Id = generateId();
+        setCharacters([
+            {
+                id: char1Id,
+                storyId: demoStoryId,
+                name: "艾伦",
+                role: "主角",
+                bio: "艾伦是一个沉默寡言的生物工程师...",
+                conflict: "生存与寻找真相",
+                obstacle: "系统故障与异形生物",
+                action: "逃离冷冻舱",
+                ending: "未知",
+                description: "飞船上的生物工程师，性格沉稳。",
+                appearance: "黑色短发，穿着破损的蓝色制服，左臂有机械义肢。",
+                growthArc: "从迷茫的幸存者成长为坚定的领袖。"
+            },
+            {
+                id: char2Id,
+                storyId: demoStoryId,
+                name: "K-9",
+                role: "配角",
+                bio: "忠诚的机器狗",
+                conflict: "服从指令与保护主人的冲突",
+                obstacle: "程序限制",
+                action: "协助艾伦",
+                ending: "牺牲自我",
+                description: "安保型机器狗",
+            }
+        ]);
+        setRelationships([
+            {
+                id: generateId(),
+                storyId: demoStoryId,
+                sourceCharacterId: char1Id,
+                targetCharacterId: char2Id,
+                type: "伙伴",
+                description: "从废墟中修复的伙伴"
+            }
+        ]);
         setOutlines([{
             id: generateId(),
             storyId: demoStoryId,
@@ -75,6 +111,19 @@ const App: React.FC = () => {
                 { stage: "结局", tension: 30, description: "成功发送求救信号" }
             ]
         }]);
+        
+        // Mock History for Calendar Demo
+        const today = new Date();
+        const mockHistory: DailyRecord[] = [];
+        for(let i = 0; i < 10; i++) {
+            const d = new Date(today);
+            d.setDate(today.getDate() - i);
+            mockHistory.push({
+                date: d.toISOString().split('T')[0],
+                wordCount: Math.floor(Math.random() * 1500)
+            });
+        }
+        setWritingHistory(mockHistory);
     }
   }, []);
 
@@ -171,8 +220,43 @@ const App: React.FC = () => {
       setTrash(trash.filter(t => t.id !== item.id));
   };
 
-  const handleSaveChapter = (id: string, content: string, title: string) => {
-      setChapters(prev => prev.map(c => c.id === id ? { ...c, content, title } : c));
+  const handleSaveChapter = (id: string, content: string, title: string, povId?: string) => {
+      setChapters(prev => {
+          const oldChapter = prev.find(c => c.id === id);
+          const newChapters = prev.map(c => c.id === id ? { ...c, content, title, povCharacterId: povId } : c);
+          
+          // Calculate Word Count Delta
+          if (oldChapter) {
+              const delta = content.length - oldChapter.content.length;
+              if (delta > 0) {
+                  updateDailyStats(delta);
+              }
+          } else {
+              // New chapter scenario
+              if (content.length > 0) {
+                  updateDailyStats(content.length);
+              }
+          }
+          return newChapters;
+      });
+      
+      // Update story updated_at
+      const chapter = chapters.find(c => c.id === id);
+      if (chapter) {
+          setStories(prev => prev.map(s => s.id === chapter.storyId ? { ...s, updatedAt: Date.now() } : s));
+      }
+  };
+
+  const updateDailyStats = (wordsAdded: number) => {
+      const todayStr = getTodayString();
+      setWritingHistory(prev => {
+          const existingEntry = prev.find(r => r.date === todayStr);
+          if (existingEntry) {
+              return prev.map(r => r.date === todayStr ? { ...r, wordCount: r.wordCount + wordsAdded } : r);
+          } else {
+              return [...prev, { date: todayStr, wordCount: wordsAdded }];
+          }
+      });
   };
 
   const handleAddCharacters = (chars: Partial<Character>[]) => {
@@ -191,14 +275,20 @@ const App: React.FC = () => {
       setCharacters([...characters, ...newChars]);
   };
 
-  const handleSaveCharacter = (char: Character) => {
-      // Check if it's a new character or update
+  const handleSaveCharacter = (char: Character, charRelationships: Relationship[]) => {
+      // Save Character
       const existing = characters.find(c => c.id === char.id);
       if (existing) {
           setCharacters(characters.map(c => c.id === char.id ? char : c));
       } else {
           setCharacters([...characters, char]);
       }
+
+      // Save Relationships
+      // 1. Remove all existing relationships where source is this char
+      const filteredRels = relationships.filter(r => r.sourceCharacterId !== char.id);
+      // 2. Add new ones
+      setRelationships([...filteredRels, ...charRelationships]);
   };
 
   const handleDeleteCharacter = (id: string) => {
@@ -214,6 +304,7 @@ const App: React.FC = () => {
         };
         setTrash([trashItem, ...trash]);
         setCharacters(characters.filter(x => x.id !== id));
+        setRelationships(relationships.filter(r => r.sourceCharacterId !== id && r.targetCharacterId !== id));
       }
   };
 
@@ -243,11 +334,97 @@ const App: React.FC = () => {
     </button>
   );
 
-  const renderDashboard = () => (
+  const renderDashboard = () => {
+    // Calculate calendar days (last 14 days)
+    const today = new Date();
+    const calendarDays = [];
+    for(let i = 13; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const record = writingHistory.find(r => r.date === dateStr);
+        calendarDays.push({
+            date: d,
+            dateStr: dateStr,
+            count: record ? record.wordCount : 0
+        });
+    }
+    
+    const todayStats = writingHistory.find(r => r.date === getTodayString())?.wordCount || 0;
+    const isGoalMet = todayStats >= userSettings.dailyGoal;
+
+    return (
     <div className="p-8 max-w-6xl mx-auto overflow-y-auto h-full">
       <h1 className="text-3xl font-bold text-slate-800 mb-2">欢迎回来, 作家</h1>
       <p className="text-slate-500 mb-10">准备好编织下一个精彩的世界了吗？</p>
 
+      {/* Stats & Goals Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+          {/* Goal Card */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between relative overflow-hidden">
+              <div className="absolute right-0 top-0 p-6 opacity-5">
+                  <Award size={120} className="text-indigo-600" />
+              </div>
+              <div>
+                  <h3 className="text-slate-500 font-medium mb-1">今日目标</h3>
+                  <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-bold text-indigo-600">{todayStats}</span>
+                      <span className="text-slate-400">/ {userSettings.dailyGoal} 字</span>
+                  </div>
+              </div>
+              <div className="mt-4">
+                  <div className="w-full bg-slate-100 rounded-full h-2 mb-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-1000 ${isGoalMet ? 'bg-amber-400' : 'bg-indigo-600'}`} 
+                        style={{ width: `${Math.min(100, (todayStats / userSettings.dailyGoal) * 100)}%` }}
+                      ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-400">
+                      <span>{isGoalMet ? '目标达成！🎉' : '加油，还差一点！'}</span>
+                      <button onClick={() => {
+                          const newGoal = prompt("设置新的每日字数目标:", userSettings.dailyGoal.toString());
+                          if(newGoal && !isNaN(parseInt(newGoal))) setUserSettings({...userSettings, dailyGoal: parseInt(newGoal)});
+                      }} className="hover:text-indigo-600">修改目标</button>
+                  </div>
+              </div>
+          </div>
+
+          {/* Calendar Card */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-2">
+               <div className="flex justify-between items-center mb-4">
+                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                       <Calendar size={18} className="text-indigo-500"/> 创作日历 (打卡)
+                   </h3>
+                   <span className="text-xs text-slate-400">最近14天</span>
+               </div>
+               <div className="flex justify-between items-end gap-2">
+                   {calendarDays.map((day, idx) => {
+                       const intensity = Math.min(1, day.count / userSettings.dailyGoal);
+                       let colorClass = 'bg-slate-100';
+                       if (day.count > 0) {
+                           if (intensity < 0.3) colorClass = 'bg-indigo-200';
+                           else if (intensity < 0.7) colorClass = 'bg-indigo-400';
+                           else colorClass = 'bg-indigo-600';
+                       }
+                       if (day.count >= userSettings.dailyGoal) colorClass = 'bg-amber-400'; // Goal met
+
+                       return (
+                           <div key={idx} className="flex flex-col items-center gap-2 flex-1 group relative">
+                               {/* Tooltip */}
+                               <div className="absolute bottom-full mb-2 hidden group-hover:block bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                                   {day.dateStr}: {day.count} 字
+                               </div>
+                               
+                               <div className={`w-full rounded-t-md transition-all duration-500 ${colorClass}`} style={{ height: `${Math.max(15, (day.count / userSettings.dailyGoal) * 60)}px` }}></div>
+                               <span className="text-[10px] text-slate-400 font-medium">{day.date.getDate()}</span>
+                           </div>
+                       )
+                   })}
+               </div>
+          </div>
+      </div>
+
+      {/* Action Buttons */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
         <button 
           onClick={() => handleCreateStory(false)}
@@ -312,6 +489,7 @@ const App: React.FC = () => {
       </div>
     </div>
   );
+  } // End renderDashboard
 
   const renderStoryLibrary = () => (
     <div className="p-8 h-full overflow-y-auto">
@@ -352,12 +530,10 @@ const App: React.FC = () => {
           return matchText && matchRole;
       });
 
-      // Group characters by story for display
-      const groupedChars: Record<string, Character[]> = {};
-      filteredCharacters.forEach(c => {
-          if (!groupedChars[c.storyId]) groupedChars[c.storyId] = [];
-          groupedChars[c.storyId].push(c);
-      });
+      const filteredRelationships = relationships.filter(r => 
+          filteredCharacters.some(c => c.id === r.sourceCharacterId) && 
+          filteredCharacters.some(c => c.id === r.targetCharacterId)
+      );
 
       const roleColors: Record<string, string> = {
           '主角': 'bg-indigo-100 text-indigo-700',
@@ -374,6 +550,22 @@ const App: React.FC = () => {
                     <p className="text-slate-500 mt-1">管理所有故事的人物设定与世界观。</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                     {/* View Toggle */}
+                     <div className="bg-white p-1 border border-slate-200 rounded-lg flex">
+                        <button 
+                            onClick={() => setDataViewMode('list')}
+                            className={`p-1.5 rounded transition-colors ${dataViewMode === 'list' ? 'bg-slate-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <Grid size={16} />
+                        </button>
+                        <button 
+                            onClick={() => setDataViewMode('map')}
+                            className={`p-1.5 rounded transition-colors ${dataViewMode === 'map' ? 'bg-slate-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <Share2 size={16} />
+                        </button>
+                     </div>
+
                     {/* Search */}
                     <div className="relative">
                         <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -418,64 +610,69 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex-1">
-                {Object.keys(groupedChars).length === 0 && (
+                {filteredCharacters.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                         <User size={48} className="mb-4 opacity-20" />
                         <p>未找到匹配的人物。</p>
                     </div>
                 )}
 
-                {Object.keys(groupedChars).map(storyId => {
-                    const storyTitle = stories.find(s => s.id === storyId)?.title || "未知故事";
-                    return (
-                        <div key={storyId} className="mb-10">
-                            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-200 pb-2">
-                                <BookOpen size={14} /> {storyTitle}
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                {groupedChars[storyId].map(char => (
-                                    <div 
-                                        key={char.id} 
-                                        onClick={() => {
-                                            setEditingCharacter(char);
-                                            setIsCharModalOpen(true);
-                                        }}
-                                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group"
-                                    >
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-lg group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
-                                                    {char.name.charAt(0)}
-                                                </div>
-                                                <div>
-                                                    <h3 className="font-bold text-slate-800">{char.name}</h3>
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleColors[char.role] || roleColors['路人']}`}>
-                                                        {char.role}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <Settings size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                {dataViewMode === 'map' ? (
+                     <div className="h-[600px]">
+                        <RelationshipMap 
+                            characters={filteredCharacters}
+                            relationships={filteredRelationships}
+                            onNodeClick={(char) => {
+                                setEditingCharacter(char);
+                                setIsCharModalOpen(true);
+                            }}
+                        />
+                     </div>
+                ) : (
+                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {filteredCharacters.map(char => (
+                            <div 
+                                key={char.id} 
+                                onClick={() => {
+                                    setEditingCharacter(char);
+                                    setIsCharModalOpen(true);
+                                }}
+                                className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col"
+                            >
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-lg group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
+                                            {char.name.charAt(0)}
                                         </div>
-                                        
-                                        <div className="space-y-2 text-xs text-slate-500 mt-3">
-                                            {char.description && (
-                                                <p className="line-clamp-2 italic text-slate-400 mb-2">{char.description}</p>
-                                            )}
-                                            <div className="flex gap-2">
-                                                <span className="font-bold text-slate-300 w-8 flex-shrink-0">冲突</span> 
-                                                <span className="truncate">{char.conflict || "-"}</span>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <span className="font-bold text-slate-300 w-8 flex-shrink-0">行动</span> 
-                                                <span className="truncate">{char.action || "-"}</span>
-                                            </div>
+                                        <div>
+                                            <h3 className="font-bold text-slate-800">{char.name}</h3>
+                                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleColors[char.role] || roleColors['路人']}`}>
+                                                {char.role}
+                                            </span>
                                         </div>
                                     </div>
-                                ))}
+                                    <Settings size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                                </div>
+                                
+                                <div className="space-y-2 text-xs text-slate-500 mt-3 flex-1">
+                                    {char.description && (
+                                        <p className="line-clamp-2 italic text-slate-400 mb-2">{char.description}</p>
+                                    )}
+                                    <div className="flex gap-2">
+                                        <span className="font-bold text-slate-300 w-8 flex-shrink-0">冲突</span> 
+                                        <span className="truncate">{char.conflict || "-"}</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Shows relation count */}
+                                <div className="mt-4 pt-3 border-t border-slate-50 text-xs text-slate-400 flex gap-2">
+                                     <Share2 size={12} />
+                                     <span>{relationships.filter(r => r.sourceCharacterId === char.id || r.targetCharacterId === char.id).length} 个关系</span>
+                                </div>
                             </div>
-                        </div>
-                    )
-                })}
+                        ))}
+                     </div>
+                )}
             </div>
 
             {/* Modal */}
@@ -486,6 +683,8 @@ const App: React.FC = () => {
                 onDelete={handleDeleteCharacter}
                 initialData={editingCharacter}
                 storyId={editingCharacter?.storyId || stories[0]?.id || ""}
+                allCharacters={characters}
+                existingRelationships={relationships}
             />
         </div>
       );
@@ -540,6 +739,7 @@ const App: React.FC = () => {
             story={story}
             activeChapterId={activeChapterId}
             chapters={chapters.filter(c => c.storyId === selectedStoryId).sort((a,b) => a.order - b.order)}
+            characters={characters.filter(c => c.storyId === selectedStoryId)}
             onSaveChapter={handleSaveChapter}
             onCreateChapter={() => {
                 const newChapter: Chapter = {
@@ -556,6 +756,9 @@ const App: React.FC = () => {
             onUpdateOutline={handleUpdateOutline}
             onBack={() => setCurrentView(ViewState.STORY_LIBRARY)}
             onSelectChapter={setActiveChapterId}
+            // Stats
+            dailyGoal={userSettings.dailyGoal}
+            todayCount={writingHistory.find(r => r.date === getTodayString())?.wordCount || 0}
           />
         );
       case ViewState.OUTLINE_WORLD: return <OutlineWorld outlines={outlines} stories={stories} onCreateOutline={() => alert('请在书写界面使用 AI 提取功能生成大纲')} />;
