@@ -1,4 +1,3 @@
-
 export enum ViewState {
   DASHBOARD = 'DASHBOARD',
   STORY_LIBRARY = 'STORY_LIBRARY',
@@ -16,6 +15,7 @@ export interface Character {
   storyId: string;
   name: string;
   role: CharacterRole;
+  bio?: string; // New: Freeform biography/document content
   // Core 4 - Story Drivers
   conflict: string; // 冲突
   obstacle: string; // 阻碍
@@ -24,8 +24,17 @@ export interface Character {
   // Details
   description?: string;
   appearance?: string; // 外貌
-  relationships?: string; // 人物关系
+  relationships?: string; // Deprecated text field, keeping for compatibility, moving to Relationship entity
   growthArc?: string; // 成长曲线
+}
+
+export interface Relationship {
+  id: string;
+  storyId: string;
+  sourceCharacterId: string;
+  targetCharacterId: string;
+  type: string; // e.g., "Friend", "Enemy", "Family", "Rival"
+  description: string;
 }
 
 export interface OutlinePoint {
@@ -47,6 +56,7 @@ export interface Chapter {
   title: string;
   content: string;
   order: number;
+  povCharacterId?: string; // New: Point of View Character
 }
 
 export interface Story {
