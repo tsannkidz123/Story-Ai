@@ -1,160 +1,249 @@
+import { Character, OutlinePoint, StoryConcept } from "../types";
 
-import React, { useState } from 'react';
-import { Lightbulb, Sparkles, ArrowRight, Loader2, BookOpen } from 'lucide-react';
-import { generateStoryConcept } from '../services/gemini';
-import { StoryConcept } from '../types';
+const apiKey = ""; 
+const apiUrlBase = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
-interface IdeaGenieProps {
-  onCreateStory: (concept: StoryConcept) => void;
-}
-
-const IdeaGenie: React.FC<IdeaGenieProps> = ({ onCreateStory }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    genre: '',
-    theme: '',
-    hero: '',
-    setting: ''
-  });
-  const [result, setResult] = useState<StoryConcept | null>(null);
-
-  const handleGenerate = async () => {
-    if (!inputs.genre && !inputs.theme) {
-        alert("请至少填写类型和核心点子！");
-        return;
-    }
-    
-    setIsLoading(true);
-    try {
-      const concept = await generateStoryConcept(inputs);
-      setResult(concept);
-    } catch (e) {
-      alert("生成失败，请重试");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="p-8 h-full overflow-y-auto bg-slate-50 flex flex-col items-center">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full mb-4 shadow-inner">
-            <Lightbulb size={32} />
-          </div>
-          <h1 className="text-3xl font-bold text-slate-800">点子精灵</h1>
-          <p className="text-slate-500 mt-2">回答几个简单的问题，AI 为你构筑下一个宏大世界。</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Input Form */}
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 h-fit">
-            <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-              <Sparkles size={18} className="text-indigo-500" /> 灵感参数
-            </h2>
-            
-            <div className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">故事类型 (Genre)</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：赛博朋克、修仙、维多利亚悬疑..."
-                  value={inputs.genre}
-                  onChange={e => setInputs({...inputs, genre: e.target.value})}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">核心点子 / 梗概 (Theme)</label>
-                <textarea 
-                  placeholder="一句话描述你想写什么。例如：一个不会魔法的人在魔法世界成了救世主。"
-                  value={inputs.theme}
-                  onChange={e => setInputs({...inputs, theme: e.target.value})}
-                  rows={3}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">主角特征 (Protagonist)</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：落魄侦探、失忆的机器人..."
-                  value={inputs.hero}
-                  onChange={e => setInputs({...inputs, hero: e.target.value})}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">故事背景 (Setting)</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：2077年的新东京、被迷雾笼罩的孤岛..."
-                  value={inputs.setting}
-                  onChange={e => setInputs({...inputs, setting: e.target.value})}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                />
-              </div>
-
-              <button 
-                onClick={handleGenerate}
-                disabled={isLoading}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 mt-4"
-              >
-                {isLoading ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                {isLoading ? '正在构思...' : '激发灵感'}
-              </button>
-            </div>
-          </div>
-
-          {/* Output Result */}
-          <div className={`transition-all duration-500 ${result ? 'opacity-100 translate-y-0' : 'opacity-50 translate-y-4'}`}>
-            {result ? (
-              <div className="bg-white p-8 rounded-2xl shadow-xl border border-indigo-100 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-                
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">{result.title}</h2>
-                <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-full mb-6">
-                  AI 构思方案
-                </span>
-
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">故事简介</h3>
-                    <p className="text-slate-700 leading-relaxed text-sm">{result.synopsis}</p>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">核心人物: {result.characterName}</h3>
-                    <div className="space-y-2 text-sm">
-                       <p><span className="font-medium text-slate-700">身份:</span> <span className="text-slate-600">{result.characterRole}</span></p>
-                       <p><span className="font-medium text-slate-700">描述:</span> <span className="text-slate-600">{result.characterDesc}</span></p>
-                       <p><span className="font-medium text-slate-700">冲突:</span> <span className="text-slate-600">{result.characterConflict}</span></p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={() => onCreateStory(result)}
-                    className="w-full py-3 border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
-                  >
-                    <BookOpen size={20} />
-                    以此创建故事
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400 p-10 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                <Lightbulb size={48} className="mb-4 opacity-20" />
-                <p>你的灵感将在这里显现...</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+const characterSchema = {
+    type: "ARRAY",
+    items: {
+        type: "OBJECT",
+        properties: {
+            name: { type: "STRING" },
+            conflict: { type: "STRING", description: "Internal or external conflict driving the character" },
+            obstacle: { type: "STRING", description: "Main forces opposing the character" },
+            action: { type: "STRING", description: "Key actions taken by the character" },
+            ending: { type: "STRING", description: "Projected or actual resolution for the character" },
+            role: { type: "STRING", description: "Protagonist, Antagonist, Supporting, etc." }
+        },
+        required: ["name", "conflict", "obstacle", "action", "ending"],
+    },
 };
 
-export default IdeaGenie;
+const characterAnalysisSchema = {
+    type: "OBJECT",
+    properties: {
+        name: { type: "STRING" },
+        role: { type: "STRING" },
+        description: { type: "STRING" },
+        conflict: { type: "STRING" },
+        obstacle: { type: "STRING" },
+        action: { type: "STRING" },
+        ending: { type: "STRING" },
+        appearance: { type: "STRING" },
+        growthArc: { type: "STRING" },
+    },
+    required: ["name", "role", "conflict", "obstacle", "action"]
+};
+
+// 大纲 Schema
+const outlineSchema = {
+    type: "ARRAY",
+    items: {
+        type: "OBJECT",
+        properties: {
+            stage: { type: "STRING", description: "Name of the plot stage (e.g. Setup, Climax)" },
+            tension: { type: "INTEGER", description: "Narrative tension level from 0 to 100" },
+            description: { type: "STRING", description: "Summary of events at this stage" }
+        },
+        required: ["stage", "tension", "description"]
+    }
+};
+
+const conceptSchema = {
+    type: "OBJECT",
+    properties: {
+        title: { type: "STRING" },
+        synopsis: { type: "STRING" },
+        characterName: { type: "STRING" },
+        characterRole: { type: "STRING" },
+        characterDesc: { type: "STRING" },
+        characterConflict: { type: "STRING" },
+    },
+    required: ["title", "synopsis", "characterName", "characterRole", "characterDesc", "characterConflict"]
+};
+
+async function callGeminiApi<T>(
+    prompt: string,
+    schema?: any,
+    history: { role: 'user' | 'model', parts: { text: string }[] }[] = [],
+    systemInstruction?: string,
+): Promise<T | string> {
+    const contents = [...history, { role: 'user' as const, parts: [{ text: prompt }] }];
+    
+    const payload: any = {
+        contents: contents,
+    };
+    
+    if (schema) {
+        payload.generationConfig = {
+            responseMimeType: "application/json",
+            responseSchema: schema,
+        };
+    }
+    
+    if (systemInstruction) {
+        payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const response = await fetch(apiUrlBase, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                if (response.status === 429 && attempt < 3) {
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // 重试
+                }
+                throw new Error(`API call failed with status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (schema) {
+                if (text) {
+                    try {
+                        return JSON.parse(text) as T;
+                    } catch (e) {
+                        console.error("Failed to parse JSON response:", text);
+                        throw new Error("AI returned invalid JSON structure.");
+                    }
+                }
+                throw new Error("AI did not return content or JSON text.");
+            }
+            
+            return text || "";
+            
+        } catch (error) {
+            if (attempt === 3) {
+                throw error; 
+            }
+            const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    throw new Error("Max retries reached. Failed to call AI API.");
+}
+
+export const continueStory = async (
+    previousContext: string,
+    currentContext: string,
+    styleInstructions: string = "Maintain the tone and style."
+): Promise<string> => {
+    try {
+        const prompt = `
+          You are a co-writer for a novel.
+          
+          Previous Context:
+          ${previousContext.slice(-1000)}
+          
+          Current Writing:
+          ${currentContext.slice(-500)}
+          
+          Instructions:
+          ${styleInstructions}
+          Continue the story naturally from the last sentence. Write about 200-300 words.
+        `;
+        
+        return await callGeminiApi<string>(prompt);
+    } catch (error) {
+        console.error("Error continuing story:", error);
+        throw new Error("无法继续故事。");
+    }
+};
+
+export const extractCharactersFromText = async (text: string): Promise<Partial<Character>[]> => {
+    try {
+        const prompt = `
+          Analyze the following story text and extract key characters.
+          Focus on their core narrative elements: Conflict, Obstacle, Action, and Ending (if apparent or implied).
+          
+          Text:
+          ${text.slice(0, 15000)}
+        `;
+        
+        return await callGeminiApi<Partial<Character>[]>(prompt, characterSchema);
+    } catch (error) {
+        console.error("Error extracting characters:", error);
+        return [];
+    }
+};
+
+export const analyzeCharacterBio = async (bio: string): Promise<Partial<Character> | null> => {
+    try {
+        const prompt = `
+          Read the following character biography/notes and extract structured character data.
+          Infer missing fields if necessary based on the context.
+          
+          Biography:
+          ${bio}
+        `;
+        
+        return await callGeminiApi<Partial<Character>>(prompt, characterAnalysisSchema);
+    } catch (error) {
+        console.error("Error analyzing bio:", error);
+        return null;
+    }
+}
+
+export const generateOutlineFromText = async (text: string): Promise<OutlinePoint[]> => {
+    try {
+        const prompt = `
+          Analyze the following story text and create a narrative arc outline.
+          Map the story progression to a "Growth/Tension Curve".
+          Provide 5-8 key plot points.
+          
+          Text:
+          ${text.slice(0, 15000)}
+        `;
+
+        return await callGeminiApi<OutlinePoint[]>(prompt, outlineSchema);
+    } catch (error) {
+        console.error("Error generating outline:", error);
+        return [];
+    }
+};
+
+export const generateStoryConcept = async (inputs: { genre: string, theme: string, hero: string, setting: string }): Promise<StoryConcept | null> => {
+    try {
+        const prompt = `
+          Act as a professional story consultant. Based on the following inputs, brainstorm a compelling story concept.
+          
+          Genre: ${inputs.genre}
+          Theme/Core Idea: ${inputs.theme}
+          Protagonist: ${inputs.hero}
+          Setting: ${inputs.setting}
+          
+          Create a creative title, a 100-word synopsis, and define the main character with their core conflict.
+        `;
+
+        return await callGeminiApi<StoryConcept>(prompt, conceptSchema);
+    } catch (error) {
+        console.error("Error generating concept:", error);
+        return null;
+    }
+}
+
+export const assistantChat = async (history: {role: string, parts: {text: string}[]}[], message: string): Promise<string> => {
+    try {
+        const systemInstruction = "You are a helpful, creative writing assistant. Help with research, synonyms, plot holes, and world-building.";
+        
+        const lastUserMessage = message; 
+
+        const formattedHistory = history.map(msg => ({
+            role: msg.role === 'model' ? 'model' : 'user',
+            parts: msg.parts,
+        }));
+
+        return await callGeminiApi<string>(lastUserMessage, undefined, formattedHistory, systemInstruction);
+
+    } catch (error) {
+        console.error("Chat error:", error);
+        return "抱歉，我暂时无法连接到灵感源泉。";
+    }
+};
